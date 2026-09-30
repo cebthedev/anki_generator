@@ -1,0 +1,71 @@
+AllCops:
+  TargetRubyVersion: 3.1
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - 'examples/**/*'
+    - 'scripts/**/*'
+
+Layout/LineLength:
+  Max: 120
+  Exclude:
+    - '*.gemspec'
+
+Metrics/MethodLength:
+  Max: 20
+  Exclude:
+    - 'tests/**/*'
+    # Static Anki data blobs; length is driven by the format, not design.
+    - 'lib/anki_generator/apkg_schema.rb'
+
+Metrics/ClassLength:
+  Max: 150
+  Exclude:
+    - 'tests/**/*'
+
+Metrics/BlockLength:
+  Max: 30
+  Exclude:
+    - 'tests/**/*'
+    - '*.gemspec'
+    - 'Rakefile'
+
+Metrics/AbcSize:
+  Max: 30
+  Exclude:
+    - 'tests/**/*'
+
+Metrics/CyclomaticComplexity:
+  Max: 10
+
+Metrics/PerceivedComplexity:
+  Max: 10
+
+# Command initializers take their full option surface as keyword arguments;
+# counting them against the positional-parameter limit is meaningless.
+Metrics/ParameterLists:
+  CountKeywordArgs: false
+
+# Short parameter names that are unambiguous in this codebase.
+Naming/MethodParameterName:
+  AllowedNames:
+    - ui
+    - io
+    - id
+    - db
+    - e
+
+# Test class names are self-describing.
+Style/Documentation:
+  Exclude:
+    - 'tests/**/*'
+
+# The schema module is static Anki data (SQL + default JSON blobs); its size is
+# driven by the format, not by design choices.
+Metrics/ModuleLength:
+  Exclude:
+    - 'lib/anki_generator/apkg_schema.rb'
+
+# CLI output strings legitimately use double quotes for interpolation.
+Style/StringLiterals:
+  EnforcedStyle: single_quotes

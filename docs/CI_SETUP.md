@@ -6,8 +6,9 @@ This document explains the minimal GitHub Actions workflows and Ruby setup.
 
 ### 1. `ruby.yml` - Main CI Pipeline
 - **Trigger**: Push/PR to main branch
-- **Ruby Versions**: 3.1, 3.2, 3.3 (current versions)
-- **Actions**: Test and build gem
+- **Ruby Versions**: 3.1, 3.2, 3.3, 3.4
+- **Lint**: RuboCop gate (zero offenses enforced)
+- **Actions**: Test, lint, and build gem
 - **Status**: ✅ Minimal and reliable
 
 ### 2. `release.yml` - Automated Releases

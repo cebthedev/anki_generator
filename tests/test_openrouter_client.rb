@@ -1,316 +1,162 @@
 # frozen_string_literal: true
 
-require 'minitest/autorun'
-require 'minitest/mock'
-require_relative '../lib/openrouter_client'
+require_relative 'test_helper'
 
 class OpenRouterClientTest < Minitest::Test
+  API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+
   def setup
     @api_key = 'test_api_key'
-    @client = OpenRouterClient.new(api_key: @api_key)
+    @client = AnkiGenerator::OpenRouterClient.new(api_key: @api_key)
+  end
+
+  def stub_completion(content, status: 200)
+    stub_request(:post, API_URL).to_return(
+      status:,
+      body: { 'choices' => [{ 'message' => { 'content' => content } }] }.to_json,
+      headers: { 'Content-Type' => 'application/json' }
+    )
   end
 
   def test_initialization_with_api_key
-    client = OpenRouterClient.new(api_key: 'test_key')
+    client = AnkiGenerator::OpenRouterClient.new(api_key: 'test_key')
     assert_equal 'test_key', client.api_key
-    assert_equal 'openai/gpt-3.5-turbo', client.model
+    assert_equal AnkiGenerator::OpenRouterClient::DEFAULT_MODEL, client.model
   end
 
   def test_initialization_with_custom_model
-    client = OpenRouterClient.new(api_key: 'test_key', model: 'claude-3-sonnet')
-    assert_equal 'claude-3-sonnet', client.model
+    client = AnkiGenerator::OpenRouterClient.new(api_key: 'test_key', model: 'anthropic/claude-sonnet-4')
+    assert_equal 'anthropic/claude-sonnet-4', client.model
   end
 
-  def test_initialization_without_api_key_raises_error
-    ENV.delete('OPENROUTER_API_KEY')
-    
-    assert_raises(ArgumentError) do
-      OpenRouterClient.new
+  def test_initialization_without_api_key_raises_typed_error
+    without_env_key do
+      assert_raises(AnkiGenerator::ConfigurationError) { AnkiGenerator::OpenRouterClient.new }
     end
   end
 
   def test_initialization_with_env_var
-    ENV['OPENROUTER_API_KEY'] = 'env_api_key'
-    client = OpenRouterClient.new
-    assert_equal 'env_api_key', client.api_key
-  ensure
-    ENV.delete('OPENROUTER_API_KEY')
+    with_env_key('env_api_key') do
+      client = AnkiGenerator::OpenRouterClient.new
+      assert_equal 'env_api_key', client.api_key
+    end
+  end
+
+  def test_connection_has_timeouts
+    connection = @client.send(:connection)
+    assert_equal 120, connection.options.timeout
+    assert_equal 10, connection.options.open_timeout
   end
 
   def test_generate_flashcard_success
-    mock_response = {
-      'choices' => [
-        {
-          'message' => {
-            'content' => '{"front": "What is Ruby?", "back": "Ruby is a programming language"}'
-          }
-        }
-      ]
-    }
+    stub_completion('{"front": "What is Ruby?", "back": "A programming language"}')
 
-    # Mock the Faraday connection
-    mock_connection = Minitest::Mock.new
-    mock_faraday_response = Minitest::Mock.new
-    
-    mock_faraday_response.expect(:success?, true)
-    mock_faraday_response.expect(:body, mock_response)
-    
-    mock_connection.expect(:post, mock_faraday_response, ['/chat/completions'])
-    
-    @client.stub(:connection, mock_connection) do
-      result = @client.generate_flashcard(topic: 'Ruby programming')
-      
-      assert_equal 'What is Ruby?', result['front']
-      assert_equal 'Ruby is a programming language', result['back']
-    end
+    card = @client.generate_flashcard(topic: 'Ruby programming')
 
-    mock_connection.verify
-    mock_faraday_response.verify
+    assert_equal 'What is Ruby?', card['front']
+    assert_equal 'A programming language', card['back']
+  end
+
+  def test_generate_flashcard_strips_markdown_fences
+    stub_completion("```json\n{\"front\": \"Q\", \"back\": \"A\"}\n```")
+
+    card = @client.generate_flashcard(topic: 'Anything')
+
+    assert_equal 'Q', card['front']
+    assert_equal 'A', card['back']
   end
 
   def test_generate_multiple_flashcards_success
-    mock_response = {
-      'choices' => [
-        {
-          'message' => {
-            'content' => '[{"front": "What is Ruby?", "back": "A programming language"}, {"front": "What is Rails?", "back": "A web framework"}]'
-          }
-        }
-      ]
-    }
+    stub_completion('[{"front": "Q1", "back": "A1"}, {"front": "Q2", "back": "A2"}]')
 
-    mock_connection = Minitest::Mock.new
-    mock_faraday_response = Minitest::Mock.new
-    
-    mock_faraday_response.expect(:success?, true)
-    mock_faraday_response.expect(:body, mock_response)
-    
-    mock_connection.expect(:post, mock_faraday_response, ['/chat/completions'])
-    
-    @client.stub(:connection, mock_connection) do
-      result = @client.generate_multiple_flashcards(topics: ['Ruby', 'Rails'], count: 2)
-      
-      assert_equal 2, result.length
-      assert_equal 'What is Ruby?', result[0]['front']
-      assert_equal 'What is Rails?', result[1]['front']
-    end
+    cards = @client.generate_multiple_flashcards(topics: %w[Ruby Rails], count: 2)
 
-    mock_connection.verify
-    mock_faraday_response.verify
+    assert_equal 2, cards.length
+    assert_equal 'Q1', cards[0]['front']
+    assert_equal 'Q2', cards[1]['front']
   end
 
-  def test_api_error_handling
-    mock_connection = Minitest::Mock.new
-    mock_faraday_response = Minitest::Mock.new
-    
-    mock_faraday_response.expect(:success?, false)
-    mock_faraday_response.expect(:status, 401)
-    mock_faraday_response.expect(:body, { 'error' => 'Unauthorized' })
-    
-    mock_connection.expect(:post, mock_faraday_response, ['/chat/completions'])
-    
-    @client.stub(:connection, mock_connection) do
-      assert_raises(RuntimeError, /OpenRouter API error: 401/) do
-        @client.generate_flashcard(topic: 'Test topic')
-      end
-    end
+  def test_generate_multiple_wraps_single_object_response
+    stub_completion('{"front": "Q", "back": "A"}')
 
-    mock_connection.verify
-    mock_faraday_response.verify
+    cards = @client.generate_multiple_flashcards(topics: 'Ruby', count: 1)
+
+    assert_equal 1, cards.length
+    assert_equal 'Q', cards[0]['front']
   end
 
-  def test_json_parse_error_handling
-    mock_response = {
-      'choices' => [
-        {
-          'message' => {
-            'content' => 'Invalid JSON response'
-          }
-        }
-      ]
-    }
+  def test_api_error_raises_typed_error_with_status
+    stub_request(:post, API_URL).to_return(
+      status: 401,
+      body: { 'error' => { 'message' => 'invalid key' } }.to_json,
+      headers: { 'Content-Type' => 'application/json' }
+    )
 
-    mock_connection = Minitest::Mock.new
-    mock_faraday_response = Minitest::Mock.new
-    
-    mock_faraday_response.expect(:success?, true)
-    mock_faraday_response.expect(:body, mock_response)
-    
-    mock_connection.expect(:post, mock_faraday_response, ['/chat/completions'])
-    
-    @client.stub(:connection, mock_connection) do
-      assert_raises(RuntimeError, /Failed to parse OpenRouter response as JSON/) do
-        @client.generate_flashcard(topic: 'Test topic')
-      end
+    error = assert_raises(AnkiGenerator::ApiError) do
+      @client.generate_flashcard(topic: 'Test topic')
     end
+    assert_includes error.message, '401'
+    assert_includes error.message, 'invalid key'
+  end
 
-    mock_connection.verify
-    mock_faraday_response.verify
+  def test_invalid_json_raises_parse_error
+    stub_completion('Invalid JSON response')
+
+    assert_raises(AnkiGenerator::ResponseParseError) do
+      @client.generate_flashcard(topic: 'Test topic')
+    end
+  end
+
+  def test_missing_content_raises_parse_error
+    stub_request(:post, API_URL).to_return(
+      status: 200,
+      body: { 'choices' => [{ 'message' => {} }] }.to_json,
+      headers: { 'Content-Type' => 'application/json' }
+    )
+
+    assert_raises(AnkiGenerator::ResponseParseError) do
+      @client.generate_flashcard(topic: 'Test topic')
+    end
+  end
+
+  def test_request_includes_prompt_and_model
+    stub_completion('{"front": "Q", "back": "A"}')
+
+    @client.generate_flashcard(topic: 'Ruby metaprogramming', difficulty: 'hard', context: 'For seniors')
+
+    assert_requested(:post, API_URL) do |req|
+      body = JSON.parse(req.body)
+      body['model'] == AnkiGenerator::OpenRouterClient::DEFAULT_MODEL &&
+        body['messages'].first['content'].include?('Ruby metaprogramming') &&
+        body['messages'].first['content'].include?('For seniors')
+    end
+  end
+
+  def test_attachments_are_included_in_request
+    stub_completion('{"front": "Q", "back": "A"}')
+
+    attachments = [{ filename: 'app.rb', path: '/x', content: 'class App; end' }]
+    @client.generate_flashcard(topic: 'This code', attachments:)
+
+    assert_requested(:post, API_URL) do |req|
+      JSON.parse(req.body)['messages'].first['content'].include?('class App; end')
+    end
+  end
+
+  private
+
+  def without_env_key
+    saved = ENV.delete('OPENROUTER_API_KEY')
+    yield
+  ensure
+    ENV['OPENROUTER_API_KEY'] = saved if saved
+  end
+
+  def with_env_key(value)
+    saved = ENV.fetch('OPENROUTER_API_KEY', nil)
+    ENV['OPENROUTER_API_KEY'] = value
+    yield
+  ensure
+    saved ? ENV['OPENROUTER_API_KEY'] = saved : ENV.delete('OPENROUTER_API_KEY')
   end
 end
-  def test_generate_flashcard_with_attachments
-    # Test flashcard generation with file attachments
-    attachments = [
-      {
-        filename: 'test.rb',
-        path: '/path/to/test.rb',
-        content: 'def hello\n  puts "Hello, World!"\nend'
-      },
-      {
-        filename: 'readme.md',
-        path: '/path/to/readme.md', 
-        content: '# Test Project\nThis is a test Ruby project.'
-      }
-    ]
-    
-    # Mock the HTTP response
-    mock_response_body = {
-      'choices' => [
-        {
-          'message' => {
-            'content' => '{"front": "What does this Ruby method do?", "back": "It prints Hello, World! to the console"}'
-          }
-        }
-      ]
-    }
-    
-    mock_response = Minitest::Mock.new
-    mock_response.expect :success?, true
-    mock_response.expect :body, mock_response_body
-    
-    mock_connection = Minitest::Mock.new
-    mock_connection.expect :post, mock_response, ['/chat/completions']
-    
-    @client.stub :connection, mock_connection do
-      result = @client.generate_flashcard(
-        topic: 'Ruby programming',
-        attachments: attachments
-      )
-      
-      assert_equal 'What does this Ruby method do?', result['front']
-      assert_equal 'It prints Hello, World! to the console', result['back']
-    end
-    
-    mock_response.verify
-    mock_connection.verify
-  end
-
-  def test_generate_multiple_flashcards_with_attachments
-    # Test multiple flashcard generation with attachments
-    attachments = [
-      {
-        filename: 'algorithm.py',
-        path: '/path/to/algorithm.py',
-        content: 'def binary_search(arr, target):\n    # Implementation here\n    pass'
-      }
-    ]
-    
-    # Mock the HTTP response
-    mock_response_body = {
-      'choices' => [
-        {
-          'message' => {
-            'content' => '[{"front": "What is binary search?", "back": "A search algorithm"}, {"front": "Time complexity?", "back": "O(log n)"}]'
-          }
-        }
-      ]
-    }
-    
-    mock_response = Minitest::Mock.new
-    mock_response.expect :success?, true
-    mock_response.expect :body, mock_response_body
-    
-    mock_connection = Minitest::Mock.new
-    mock_connection.expect :post, mock_response, ['/chat/completions']
-    
-    @client.stub :connection, mock_connection do
-      result = @client.generate_multiple_flashcards(
-        topics: ['Algorithms', 'Data structures'],
-        attachments: attachments,
-        count: 2
-      )
-      
-      assert_equal 2, result.length
-      assert_equal 'What is binary search?', result[0]['front']
-      assert_equal 'Time complexity?', result[1]['front']
-    end
-    
-    mock_response.verify
-    mock_connection.verify
-  end
-
-  def test_build_attachments_section
-    attachments = [
-      {
-        filename: 'test.rb',
-        path: '/path/to/test.rb',
-        content: 'puts "Hello"'
-      },
-      {
-        filename: 'config.yml',
-        path: '/path/to/config.yml',
-        content: 'database:\n  host: localhost'
-      }
-    ]
-    
-    # Use send to access private method for testing
-    result = @client.send(:build_attachments_section, attachments)
-    
-    assert_includes result, '=== ATTACHED FILE CONTENT ==='
-    assert_includes result, '--- test.rb ---'
-    assert_includes result, 'puts "Hello"'
-    assert_includes result, '--- config.yml ---'
-    assert_includes result, 'database:'
-    assert_includes result, '=== END ATTACHED CONTENT ==='
-  end
-
-  def test_build_attachments_section_empty
-    result = @client.send(:build_attachments_section, nil)
-    assert_equal "", result
-    
-    result = @client.send(:build_attachments_section, [])
-    assert_equal "", result
-  end
-
-  def test_generate_flashcard_with_context_and_attachments
-    # Test flashcard generation with both context and attachments
-    attachments = [
-      {
-        filename: 'example.js',
-        path: '/path/to/example.js',
-        content: 'function fibonacci(n) {\n  return n <= 1 ? n : fibonacci(n-1) + fibonacci(n-2);\n}'
-      }
-    ]
-    
-    mock_response_body = {
-      'choices' => [
-        {
-          'message' => {
-            'content' => '{"front": "What is the time complexity of this recursive fibonacci?", "back": "O(2^n) - exponential time complexity"}'
-          }
-        }
-      ]
-    }
-    
-    mock_response = Minitest::Mock.new
-    mock_response.expect :success?, true
-    mock_response.expect :body, mock_response_body
-    
-    mock_connection = Minitest::Mock.new
-    mock_connection.expect :post, mock_response, ['/chat/completions']
-    
-    @client.stub :connection, mock_connection do
-      result = @client.generate_flashcard(
-        topic: 'Algorithm complexity',
-        context: 'Computer science fundamentals',
-        difficulty: 'hard',
-        attachments: attachments
-      )
-      
-      assert_equal 'What is the time complexity of this recursive fibonacci?', result['front']
-      assert_equal 'O(2^n) - exponential time complexity', result['back']
-    end
-    
-    mock_response.verify
-    mock_connection.verify
-  end

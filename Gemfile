@@ -1,14 +1,19 @@
+# frozen_string_literal: true
+
 source 'https://rubygems.org'
 
-gem 'rake'
+gemspec
 
-gem 'anki2'
-gem 'minitest', '~> 5.20'
-gem 'rubocop', require: false
-gem 'thor'
-gem 'faraday', '~> 2.0'
-gem 'json', '~> 2.0'
-gem 'dotenv', '~> 2.8'
+group :development do
+  gem 'rake', '~> 13.0'
+  gem 'rubocop', '~> 1.60', require: false
+end
 
-# Ensure compatibility with Ruby 3.3+
+group :test do
+  gem 'minitest', '~> 5.20'
+  gem 'simplecov', '~> 0.22', require: false
+  gem 'webmock', '~> 3.23'
+end
+
+# Ruby 3.3+ compatibility (faraday dependency)
 gem 'mutex_m' if RUBY_VERSION >= '3.3.0'

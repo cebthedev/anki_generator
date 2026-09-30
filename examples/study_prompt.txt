@@ -1,0 +1,3 @@
+Create flashcards about Ruby programming fundamentals.
+Focus on basic syntax, data types, control structures, and object-oriented concepts.
+Make the questions practical and suitable for beginners.

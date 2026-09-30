@@ -12,61 +12,46 @@ jobs:
   release:
     name: Build and Release
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Ruby
-      uses: ruby/setup-ruby@v1
-      with:
-        ruby-version: '3.2'
-        bundler-cache: true
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
 
-    - name: Run tests
-      run: bundle exec rake test
+      - name: Run tests
+        run: bundle exec rake test
 
-    - name: Build gem
-      run: bundle exec rake build
+      - name: Build gem
+        run: bundle exec rake build
 
-    - name: Get version from tag
-      id: get_version
-      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
-    - name: Create Release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ steps.get_version.outputs.VERSION }}
-        body: |
-          ## Changes in ${{ steps.get_version.outputs.VERSION }}
-          
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            "anki_generator-${{ steps.get_version.outputs.VERSION }}.gem#anki_generator-${{ steps.get_version.outputs.VERSION }}.gem" \
+            --title "Release ${{ steps.get_version.outputs.VERSION }}" \
+            --notes "## Changes in ${{ steps.get_version.outputs.VERSION }}
+
           See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for detailed changes.
-          
-          ## Installation
-          
-          ```bash
-          gem install anki_generator -v ${{ steps.get_version.outputs.VERSION }}
-          ```
-        draft: false
-        prerelease: false
 
-    - name: Upload gem to release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./anki_generator-${{ steps.get_version.outputs.VERSION }}.gem
-        asset_name: anki_generator-${{ steps.get_version.outputs.VERSION }}.gem
-        asset_content_type: application/octet-stream
+          ## Installation
+
+          \`\`\`bash
+          gem install anki_generator -v ${{ steps.get_version.outputs.VERSION }}
+          \`\`\`"
 
     # Uncomment if you want to publish to RubyGems automatically
     # - name: Publish to RubyGems
-    #   run: |
-    #     mkdir -p ~/.gem
-    #     echo ":rubygems_api_key: ${{ secrets.RUBYGEMS_API_KEY }}" > ~/.gem/credentials
-    #     chmod 0600 ~/.gem/credentials
-    #     gem push anki_generator-${{ steps.get_version.outputs.VERSION }}.gem
+    #   env:
+    #     GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
+    #   run: gem push anki_generator-${{ steps.get_version.outputs.VERSION }}.gem

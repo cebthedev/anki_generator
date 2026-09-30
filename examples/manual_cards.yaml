@@ -1,0 +1,5 @@
+- front: "What is a Ruby class?"
+  back: "A class is a blueprint for creating objects with shared attributes and methods"
+
+- front: "How do you define a method in Ruby?"
+  back: "Use the 'def' keyword followed by the method name and optional parameters"

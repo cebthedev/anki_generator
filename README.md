@@ -76,7 +76,7 @@ Generate a deck with AI content:
 
 ```bash
 # Use a specific AI model
-./bin/anki_generator prompt_to_deck "Python basics" "Python Deck" python.apkg --model anthropic/claude-3-sonnet
+./bin/anki_generator prompt_to_deck "Python basics" "Python Deck" python.apkg --model anthropic/claude-sonnet-4
 
 # Set difficulty and count
 ./bin/anki_generator generate_yaml "Advanced algorithms" algo.yaml --difficulty hard --count 20
@@ -256,9 +256,9 @@ cards:
 
 The tool supports all models available through OpenRouter:
 
-- OpenAI: `openai/gpt-4`, `openai/gpt-3.5-turbo`
-- Anthropic: `anthropic/claude-3-sonnet`, `anthropic/claude-3-haiku`
-- Meta: `meta-llama/llama-3.1-8b-instruct`
+- OpenAI: `openai/gpt-4o-mini` (default), `openai/gpt-4o`
+- Anthropic: `anthropic/claude-sonnet-4`, `anthropic/claude-haiku-4`
+- Meta: `meta-llama/llama-3.3-70b-instruct`
 - And many more...
 
 ## Examples
@@ -322,9 +322,9 @@ See the `input/` directory for example YAML files, or create examples with `rake
 
 ## Development
 
-## Development
-
 ### Quick Start for Developers
+
+The repo pins Ruby via `.ruby-version` (3.3). With rbenv/asdf installed:
 
 ```bash
 # Clone and setup
@@ -332,9 +332,13 @@ git clone <repository-url>
 cd anki_generator
 rake setup                     # Install dependencies and create examples
 
-# Run tests
+# Run tests (coverage report in coverage/, 75% line floor enforced)
 rake test                      # Run all tests
 rake test_file[cli]           # Run specific test
+
+# Lint (zero offenses enforced — CI fails otherwise)
+rake lint
+rake lint_fix                 # Auto-correct safe offenses
 
 # Try the examples
 rake demo_api                 # Test API connection
@@ -344,32 +348,28 @@ rake demo_attachments         # Demo with file attachments
 
 ### GitHub Actions CI/CD
 
-The project includes minimal GitHub Actions workflows:
+The project includes GitHub Actions workflows:
 
-- **`ruby.yml`** - Main CI pipeline testing Ruby 3.1, 3.2, 3.3
+- **`ruby.yml`** - Main CI pipeline: tests on Ruby 3.1–3.4 plus a RuboCop lint gate
 - **`release.yml`** - Automated releases when tags are pushed
 - **`manual-test.yml`** - Manual workflow for testing specific scenarios
 
 To trigger a release:
 ```bash
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run all tests (SimpleCov runs by default; the suite fails below 75% line coverage)
 rake test
 
 # Run specific test file
 rake test_file[cli]              # runs tests/test_cli.rb
 rake test_file[file_processor]   # runs tests/test_file_processor.rb
-
-# Run tests with coverage
-rake test_coverage
 ```
-
 ### Development Commands
 
 ```bash

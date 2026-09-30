@@ -1,0 +1,5 @@
+front: What is the main contribution of the Pattern-defeating Quicksort (pdqsort) paper? back: It introduces a new solution to the Dutch national flag problem, providing a worst-case runtime of O(nk) for inputs with k distinct elements and a hybrid sorting algorithm combining quicksort, insertion sort, and heapsort.
+
+Following that pattern, structure
+
+Generate as many anki cards deeply focused in bioinformatics about the pdf sent. Make as many as you want. be exhaustive
