@@ -60,8 +60,21 @@ class CliTest < Minitest::Test
   def test_expected_commands_are_registered
     commands = AnkiGenerator::CLI.commands.keys
 
-    %w[generate generate_yaml prompt_to_deck create_ai_template test_api version].each do |cmd|
+    %w[generate generate_yaml prompt_to_deck create_ai_template test_api version import push serve].each do |cmd|
       assert_includes commands, cmd, "Command #{cmd} should be available"
+    end
+  end
+
+  def test_new_commands_expose_their_options
+    import = AnkiGenerator::CLI.commands['import']
+    assert_includes import.options.keys.map(&:to_sym), :reverse
+
+    push = AnkiGenerator::CLI.commands['push']
+    assert_includes push.options.keys.map(&:to_sym), :url
+
+    generate = AnkiGenerator::CLI.commands['generate']
+    %i[reverse structured jobs].each do |opt|
+      assert_includes generate.options.keys.map(&:to_sym), opt
     end
   end
 
@@ -82,8 +95,10 @@ class CliTest < Minitest::Test
   end
 
   def test_default_options
-    model_default = AnkiGenerator::CLI.commands['generate_yaml'].options[:model].default
-    assert_equal AnkiGenerator::OpenRouterClient::DEFAULT_MODEL, model_default
+    # The model default is provider-dependent, resolved at runtime via
+    # option_model rather than a fixed Thor default.
+    assert_nil AnkiGenerator::CLI.commands['generate_yaml'].options[:model].default
+    assert_equal 'openrouter', AnkiGenerator::CLI.class_options[:provider].default
 
     prompt_to_deck = AnkiGenerator::CLI.commands['prompt_to_deck']
     assert_equal 'medium', prompt_to_deck.options[:difficulty].default

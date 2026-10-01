@@ -99,4 +99,55 @@ class ApkgWriterTest < Minitest::Test
 
     assert_equal [0, 1, 2], dues
   end
+
+  def test_tags_are_stored_on_the_note
+    deck = writer
+    deck.add_card('Q', 'A', tags: %w[ruby basics])
+    deck.save
+
+    db = read_db
+    assert_equal 'ruby basics', db.get_first_value('select tags from notes')
+  end
+
+  def test_cloze_note_produces_one_card_per_deletion
+    deck = writer
+    deck.add_card('{{c1::Paris}} is the capital of {{c2::France}}', '',
+                  tags: ['geo'], cloze: '{{c1::Paris}} is the capital of {{c2::France}}')
+    deck.save
+
+    db = read_db
+
+    notes = db.execute('select mid, flds, tags from notes')
+    assert_equal 1, notes.length
+    assert_equal AnkiGenerator::ApkgSchema::CLOZE_MODEL_ID, notes[0][0]
+    assert_equal 'geo', notes[0][2]
+
+    ords = db.execute('select ord from cards order by ord').flatten
+    assert_equal [0, 1], ords
+  end
+
+  def test_models_column_contains_basic_and_cloze_models
+    deck = writer
+    deck.add_card('Q', 'A')
+    deck.save
+
+    db = read_db
+    models = JSON.parse(db.get_first_value('select models from col where id = 1'))
+
+    assert_includes models.keys, AnkiGenerator::ApkgSchema::MODEL_ID.to_s
+    assert_includes models.keys, AnkiGenerator::ApkgSchema::CLOZE_MODEL_ID.to_s
+  end
+
+  def test_saving_over_an_existing_archive_replaces_it
+    deck = writer
+    deck.add_card('First', 'A')
+    deck.save
+
+    deck.add_card('Second', 'B')
+    deck.save
+
+    entries = extract_db
+    assert_equal %w[collection.anki2 media], entries.keys.sort
+    assert_equal 2, read_db.get_first_value('select count(*) from notes')
+  end
 end

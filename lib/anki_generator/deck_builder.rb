@@ -10,15 +10,16 @@ require_relative 'ui'
 
 module AnkiGenerator
   # Loads card definitions from YAML, optionally enriches them with AI-generated
-  # cards via the OpenRouter client, and exports the result as an .apkg deck.
+  # cards via an LLM client, and exports the result as an .apkg deck.
   class DeckBuilder
     attr_reader :name, :deck_file, :cards
     attr_accessor :client
 
-    def initialize(name:, deck_file:, client: nil, ui: UI.new($stderr))
+    def initialize(name:, deck_file:, client: nil, jobs: 1, ui: UI.new($stderr))
       @name = name
       @deck_file = deck_file
       @client = client
+      @jobs = jobs
       @ui = ui
       @cards = []
       load_cards
@@ -30,7 +31,7 @@ module AnkiGenerator
       if yaml_content.is_a?(Hash) && yaml_content['ai_generation']
         process_ai_generation(yaml_content)
       else
-        @cards = build_cards(yaml_content.is_a?(Array) ? yaml_content : [])
+        @cards = build_cards(extract_card_list(yaml_content))
       end
     end
 
@@ -44,7 +45,8 @@ module AnkiGenerator
           context: ai_config['context'],
           difficulty: ai_config['difficulty'] || 'medium',
           count: ai_config['count'] || 5,
-          attachments:
+          attachments:,
+          jobs: ai_config['jobs'] || @jobs
         )
         @cards = existing_cards + build_cards(ai_cards)
       else
@@ -56,15 +58,31 @@ module AnkiGenerator
       save_generated_cards_to_yaml(config)
     end
 
-    def generate_ai_cards(topics:, context: nil, difficulty: 'medium', count: 5, attachments: nil)
-      if topics.is_a?(Array) && topics.length > 1
+    # Generates AI cards for the given topics. With jobs > 1 and multiple
+    # topics, each topic is requested in parallel (one API call per topic,
+    # count cards each); with jobs == 1 all topics go in a single batched
+    # request, which is cheaper but may produce less focused cards.
+    def generate_ai_cards(topics:, context: nil, difficulty: 'medium', count: 5, attachments: nil, jobs: 1)
+      topic_list = Array(topics)
+
+      if topic_list.length > 1 && jobs > 1
+        generate_topics_in_parallel(topic_list, context:, difficulty:, count:, attachments:, jobs:)
+      elsif topic_list.length > 1
         client.generate_multiple_flashcards(
-          topics:, context:, difficulty:, count:, attachments:
+          topics: topic_list, context:, difficulty:, count:, attachments:
         )
       else
-        topic = topics.is_a?(Array) ? topics.first : topics
-        [client.generate_flashcard(topic:, context:, difficulty:, attachments:)]
+        [client.generate_flashcard(topic: topic_list.first, context:, difficulty:, attachments:)]
       end
+    end
+
+    # Appends a reversed copy of every basic card (back becomes front) — the
+    # classic "recognition + recall" pattern. Cloze cards are skipped.
+    def add_reverse_cards!
+      originals = cards.dup
+      originals.reject(&:cloze?).each { |card| cards << card.reversed }
+      @ui.info("Added #{cards.length - originals.length} reversed cards")
+      cards
     end
 
     def save_generated_cards_to_yaml(original_config)
@@ -80,12 +98,18 @@ module AnkiGenerator
 
     def generate_apkg(output_path:)
       writer = ApkgWriter.new(name:, output_path:)
-      cards.each { |card| writer.add_card(card.front, card.back) }
+      cards.each do |card|
+        if card.cloze?
+          writer.add_card(card.front, card.back, tags: card.tags, cloze: card.front)
+        else
+          writer.add_card(card.front, card.back, tags: card.tags)
+        end
+      end
       writer.save
     end
 
-    def add_card(front:, back:)
-      cards << Card.new(front:, back:)
+    def add_card(front:, back:, tags: [], cloze: nil)
+      cards << Card.new(front:, back:, tags:, cloze:)
     end
 
     # Merges cards from an existing deck YAML, deduplicating on the normalized
@@ -106,6 +130,30 @@ module AnkiGenerator
 
     private
 
+    def generate_topics_in_parallel(topics, context:, difficulty:, count:, attachments:, jobs:)
+      work = topics.dup
+      lock = Mutex.new
+      results = Queue.new
+
+      threads = [jobs, topics.length].min.times.map do
+        Thread.new do
+          loop do
+            topic = lock.synchronize { work.pop }
+            break if topic.nil?
+
+            client.generate_multiple_flashcards(
+              topics: [topic], context:, difficulty:, count:, attachments:
+            ).each { |card| results << card }
+          end
+        end
+      end
+      threads.each(&:join)
+
+      collected = []
+      collected << results.pop until results.empty?
+      collected
+    end
+
     def load_yaml(path)
       YAML.safe_load_file(path, permitted_classes: [Time, Date], aliases: false)
     rescue Psych::Exception => e
@@ -119,8 +167,10 @@ module AnkiGenerator
     end
 
     def build_cards(raw_cards)
-      raw_cards.map do |raw|
-        Card.new(front: raw['front'], back: raw['back'])
+      Array(raw_cards).map do |raw|
+        next nil unless raw.is_a?(Hash)
+
+        Card.new(front: raw['front'], back: raw['back'], tags: raw['tags'] || [], cloze: raw['cloze'])
       rescue ValidationError => e
         @ui.warn("Skipping invalid card: #{e.message}")
         nil

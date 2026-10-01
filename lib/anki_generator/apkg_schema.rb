@@ -9,6 +9,8 @@ module AnkiGenerator
   module ApkgSchema
     MODEL_ID = 1_609_739_310_911
     MODEL_NAME = 'AnkiGenerator'
+    CLOZE_MODEL_ID = 1_609_739_310_912
+    CLOZE_MODEL_NAME = 'AnkiGenerator Cloze'
     DECK_ID = 1
     SCHEMA_VERSION = 11
 
@@ -163,22 +165,45 @@ module AnkiGenerator
 
     def models_json(now_seconds:)
       JSON.generate(
-        MODEL_ID.to_s => {
-          'id' => MODEL_ID,
-          'name' => MODEL_NAME,
-          'mod' => now_seconds,
-          'usn' => -1,
-          'sortf' => 0,
-          'type' => 0,
-          'css' => CARD_CSS,
-          'tags' => [],
-          'flds' => [field('Front', 0), field('Back', 1)],
-          'tmpls' => [template],
-          'latexPre' => latex_pre,
-          'latexPost' => '\\end{document}',
-          'req' => [[0, 'any', [0]]]
-        }
+        MODEL_ID.to_s => basic_model(now_seconds),
+        CLOZE_MODEL_ID.to_s => cloze_model(now_seconds)
       )
+    end
+
+    def basic_model(now_seconds)
+      {
+        'id' => MODEL_ID,
+        'name' => MODEL_NAME,
+        'mod' => now_seconds,
+        'usn' => -1,
+        'sortf' => 0,
+        'type' => 0,
+        'css' => CARD_CSS,
+        'tags' => [],
+        'flds' => [field('Front', 0), field('Back', 1)],
+        'tmpls' => [template],
+        'latexPre' => latex_pre,
+        'latexPost' => '\\end{document}',
+        'req' => [[0, 'any', [0]]]
+      }
+    end
+
+    def cloze_model(now_seconds)
+      {
+        'id' => CLOZE_MODEL_ID,
+        'name' => CLOZE_MODEL_NAME,
+        'mod' => now_seconds,
+        'usn' => -1,
+        'sortf' => 0,
+        'type' => 1,
+        'css' => CARD_CSS,
+        'tags' => [],
+        'flds' => [field('Text', 0)],
+        'tmpls' => [cloze_template],
+        'latexPre' => latex_pre,
+        'latexPost' => '\\end{document}',
+        'req' => [[0, 'all', [0]]]
+      }
     end
 
     def field(name, ord)
@@ -199,6 +224,18 @@ module AnkiGenerator
         'ord' => 0,
         'qfmt' => '{{Front}}',
         'afmt' => "{{FrontSide}}\n\n<hr id=answer>\n\n{{Back}}",
+        'did' => nil,
+        'bqfmt' => '',
+        'bafmt' => ''
+      }
+    end
+
+    def cloze_template
+      {
+        'name' => 'Cloze',
+        'ord' => 0,
+        'qfmt' => '{{cloze:Text}}',
+        'afmt' => '{{cloze:Text}}',
         'did' => nil,
         'bqfmt' => '',
         'bafmt' => ''

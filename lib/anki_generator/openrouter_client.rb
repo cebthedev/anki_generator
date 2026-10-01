@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'faraday'
+require 'faraday/retry'
 require 'json'
 require 'dotenv/load'
 require_relative 'errors'
@@ -13,15 +14,20 @@ module AnkiGenerator
     DEFAULT_MODEL = 'openai/gpt-4o-mini'
     DEFAULT_TIMEOUT = 120
     DEFAULT_OPEN_TIMEOUT = 10
+    DEFAULT_RETRIES = 3
+    RETRY_STATUSES = [429, 500, 502, 503, 504].freeze
 
     attr_reader :api_key, :model
 
     def initialize(api_key: nil, model: DEFAULT_MODEL, timeout: DEFAULT_TIMEOUT,
-                   open_timeout: DEFAULT_OPEN_TIMEOUT, prompt_builder: PromptBuilder.new)
+                   open_timeout: DEFAULT_OPEN_TIMEOUT, retries: DEFAULT_RETRIES,
+                   structured: false, prompt_builder: PromptBuilder.new)
       @api_key = api_key || ENV.fetch('OPENROUTER_API_KEY', nil)
       @model = model
       @timeout = timeout
       @open_timeout = open_timeout
+      @retries = retries
+      @structured = structured
       @prompt_builder = prompt_builder
 
       return unless @api_key.nil? || @api_key.empty?
@@ -49,6 +55,7 @@ module AnkiGenerator
 
     def connection
       @connection ||= Faraday.new(url: BASE_URL) do |conn|
+        conn.request :retry, retry_options
         conn.request :json
         conn.response :json
         conn.adapter Faraday.default_adapter
@@ -59,19 +66,36 @@ module AnkiGenerator
       end
     end
 
+    def retry_options
+      {
+        max: @retries,
+        interval: 1.0,
+        backoff_factor: 2,
+        retry_statuses: RETRY_STATUSES
+      }
+    end
+
     def make_request(prompt, max_tokens:)
       # NOTE: a leading-slash path would replace the base URL's path; the
       # relative path here intentionally appends to /api/v1.
       response = connection.post('chat/completions') do |request|
-        request.body = {
-          model: @model,
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.7,
-          max_tokens:
-        }
+        request.body = request_body(prompt, max_tokens:)
       end
 
       extract_content(response)
+    end
+
+    # JSON mode constrains the model to valid JSON, but not every OpenRouter
+    # model supports response_format — callers opt in via structured: true.
+    def request_body(prompt, max_tokens:)
+      body = {
+        model: @model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens:
+      }
+      body[:response_format] = { type: 'json_object' } if @structured
+      body
     end
 
     def extract_content(response)

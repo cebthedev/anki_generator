@@ -1,17 +1,24 @@
 # Anki Generator
 
-A Ruby tool to generate Anki .apkg files from YAML definitions with AI-powered content generation using OpenRouter and file attachment support.
+A Ruby tool to generate Anki .apkg files from YAML definitions, Markdown notes, or CSV files — with AI-powered content generation (OpenRouter or local Ollama), cloze deletions, tags, and a built-in web editor.
 
 ## Features
 
-- **AI-Powered Generation**: Create flashcards using OpenRouter API with multiple AI models (GPT, Claude, Llama, etc.)
+- **AI-Powered Generation**: Create flashcards using OpenRouter API or a local Ollama server, with multiple AI models (GPT, Claude, Llama, etc.)
+- **Markdown & CSV Import**: Turn `Q:`/`A:` study notes or spreadsheets into decks; Markdown headings become tags
+- **Cloze Deletion Cards**: `{{cN::...}}` deletions export as real Anki cloze notes (one card per deletion)
+- **Tags & Reverse Cards**: Per-card tags in Anki, plus `--reverse` for recognition + recall pairs
+- **Web UI**: `anki_generator serve` opens a localhost editor — paste notes, generate with AI, export `.apkg`
+- **AnkiConnect Push**: Send decks straight into a running Anki with the AnkiConnect addon
+- **Parallel Generation**: `--jobs N` fans one API call per topic out across threads
+- **Resilient API Client**: Automatic retries with backoff, timeouts, structured JSON output mode
 - **File Attachment Support**: Attach code files, documentation, or entire directories for context-aware generation
 - **Prompt File Support**: Use text files as prompts for better organization and reusability
-- **Multiple Input Methods**: Generate from YAML files, direct prompts, or file attachments
+- **Multiple Input Methods**: Generate from YAML files, direct prompts, file attachments, Markdown, or CSV
 - **Intelligent Content Processing**: Automatic text file detection, size limits, and binary file filtering
 - **Direct Prompt-to-Deck Generation**: Create decks in one command without intermediate files
 - **Sync Functionality**: Merge new AI-generated cards with existing decks
-- **Flexible Configuration**: Multiple difficulty levels, context settings, and model selection
+- **Flexible Configuration**: Multiple difficulty levels, context settings, model and provider selection
 - **Comprehensive CLI**: Full command-line interface with extensive options
 
 ## Installation
@@ -56,6 +63,39 @@ Generate a deck from a YAML file:
 
 ```bash
 ./bin/anki_generator generate "My Deck" input/input.yaml my_deck.apkg
+```
+
+### Import Markdown or CSV Notes
+
+Turn existing study notes into a deck:
+
+```bash
+# Markdown: Q:/A: pairs or "- **question** — answer" bullets; headings become tags
+./bin/anki_generator import "Biology" notes.md biology.apkg
+
+# Add reversed (recall) cards for every basic card
+./bin/anki_generator import "Biology" notes.md biology.apkg --reverse
+
+# CSV: front,back[,tags] with pipe-separated tags
+./bin/anki_generator import "Capitals" capitals.csv capitals.apkg
+```
+
+### Web Editor
+
+```bash
+./bin/anki_generator serve            # http://127.0.0.1:8787
+./bin/anki_generator serve --port 9000
+```
+
+Paste Markdown/YAML on the left, generate cards with AI, edit the table, export `.apkg`.
+
+### Push to a Running Anki
+
+With the [AnkiConnect](https://ankiweb.net/shared/info/2055492159) addon installed in Anki:
+
+```bash
+./bin/anki_generator push "My Deck" cards.yaml
+./bin/anki_generator push "My Deck" cards.yaml --url http://localhost:8765
 ```
 
 ### AI-Powered Generation
@@ -104,6 +144,18 @@ Generate a deck with AI content:
 
 # Test API connection
 ./bin/anki_generator test_api --api_key YOUR_API_KEY
+
+# Use a local Ollama model instead of OpenRouter (no API key needed)
+./bin/anki_generator prompt_to_deck "Ruby basics" "Ruby" ruby.apkg --provider ollama --model llama3.2
+
+# Generate one API call per topic, 4 at a time
+./bin/anki_generator generate "AI Deck" ai.yaml out.apkg --api_key KEY --jobs 4
+
+# Ask the model for strict JSON output (supported models)
+./bin/anki_generator generate_yaml "Databases" db.yaml --structured
+
+# Basic + reversed cards from a YAML deck
+./bin/anki_generator generate "My Deck" input.yaml out.apkg --reverse
 ```
 
 ## CLI Commands
@@ -143,6 +195,38 @@ anki_generator generate_yaml PROMPT OUTPUT_YAML [options]
 Generate an Anki deck from an existing YAML file:
 ```bash
 anki_generator generate DECK_NAME YAML_FILE OUTPUT_FILE [options]
+```
+
+**Options:**
+- `--reverse` - Append a front↔back copy of every basic card
+- `--jobs N` - Generate AI topics in parallel across N threads
+- `--structured` - Request strict JSON output from the model
+- `--api-key`, `--model`, `--provider` (openrouter/ollama), `--sync_with`
+
+### `import` - Import Markdown or CSV
+Turn study notes into a deck:
+```bash
+anki_generator import DECK_NAME INPUT_FILE OUTPUT_FILE [options]
+```
+
+**Options:**
+- `--reverse` - Append reversed copies of basic cards
+
+Supports `.md`/`.markdown` (`Q:`/`A:` pairs, `- **front** — back` bullets, headings → tags) and `.csv` (`front,back[,tags]`, tags pipe-separated).
+
+### `push` - Push to Anki
+Send a YAML deck straight into a running Anki via AnkiConnect:
+```bash
+anki_generator push DECK_NAME YAML_FILE [options]
+```
+
+**Options:**
+- `--url URL` - AnkiConnect endpoint (default `http://localhost:8765`)
+
+### `serve` - Web Editor
+Start the localhost editor UI:
+```bash
+anki_generator serve [--port PORT]
 ```
 
 ### `create_ai_template` - Create Template
@@ -222,9 +306,14 @@ The tool automatically processes text-based files including:
 ```yaml
 - front: "What is Big O notation?"
   back: "Big O notation describes the limiting behavior of a function..."
+  tags: [complexity, cs]
 
 - front: "Define a graph"
   back: "A graph is a collection of vertices connected by edges"
+
+# Cloze deletion — one card per {{cN::...}} ordinal
+- cloze: "{{c1::Paris}} is the capital of {{c2::France}}"
+  tags: [geography]
 ```
 
 ### AI Generation Format
@@ -251,6 +340,12 @@ cards:
 
 - `OPENROUTER_API_KEY`: Your OpenRouter API key
 - `OPENROUTER_DEFAULT_MODEL`: Default model to use (optional)
+- `OLLAMA_URL`: Ollama server URL (default `http://localhost:11434`)
+
+### Providers
+
+- **OpenRouter** (default, `--provider openrouter`): cloud models, needs an API key; requests retry automatically with backoff on 429/5xx
+- **Ollama** (`--provider ollama`): free, local, private — run any GGUF model on your machine with no API key
 
 ### Supported Models
 
@@ -401,11 +496,21 @@ rake release_prep             # Prepare for release
 ### Project Structure
 
 ```
-├── lib/
-│   ├── anki_generator.rb      # Main generator class
-│   ├── openrouter_client.rb   # OpenRouter API client
-│   ├── anki_cli.rb           # CLI interface
-│   └── file_processor.rb     # File attachment processing
+├── lib/anki_generator/
+│   ├── deck_builder.rb        # Deck assembly: YAML loading, AI generation, sync
+│   ├── card.rb                # Card value object (basic + cloze, tags, reverse)
+│   ├── apkg_writer.rb         # Native .apkg (zip + SQLite) writer
+│   ├── apkg_schema.rb         # Anki collection schema and model JSON
+│   ├── cli.rb                 # Thor CLI (thin shell over Commands::*)
+│   ├── commands/              # One service object per CLI command
+│   ├── importers/             # Markdown and CSV note importers
+│   ├── openrouter_client.rb   # OpenRouter API client (retries, timeouts)
+│   ├── ollama_client.rb       # Local Ollama API client
+│   ├── client_factory.rb      # Provider selection
+│   ├── anki_connect_client.rb # Push decks into a running Anki
+│   ├── server.rb              # WEBrick servlets for the web editor
+│   ├── prompt_builder.rb      # Prompt construction
+│   └── file_processor.rb      # File attachment processing
 ├── bin/
 │   └── anki_generator         # CLI executable
 ├── tests/                     # Test files

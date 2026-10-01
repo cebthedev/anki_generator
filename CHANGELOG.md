@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-30
+
+### Added
+- **Markdown & CSV importers** (`AnkiGenerator::Importers::Markdown` / `Importers::Csv`) — turn study notes into decks:
+  - Markdown: `Q:`/`A:` pairs, `- **front** — back` bullets, headings become tags
+  - CSV: `front,back[,tags]` (tags pipe-separated)
+  - New command: `anki_generator import DECK_NAME INPUT_FILE OUTPUT_FILE [--reverse]`
+- **Cloze deletion cards** — YAML cards with a `cloze:` key (`cloze: "{{c1::Paris}} is the capital of {{c2::France}}"`) export as a proper Anki cloze note; one card per `{{cN::...}}` ordinal, with a dedicated `AnkiGenerator Cloze` model in the package
+- **Per-card tags** — `tags: [ruby, basics]` in YAML lands in the note's tag column; `--reverse` and importers compose with tags
+- **Reverse cards** — `--reverse` on `generate`/`import` appends a front↔back copy of every basic card (cloze cards are skipped)
+- **Parallel AI generation** — `--jobs N` on `generate` fans one API call per topic out across N threads (Mutex + Queue worker pool)
+- **Ollama provider** — `--provider ollama` talks to a local Ollama server (`OLLAMA_URL`, default `http://localhost:11434`, no API key); provider selection unified behind `AnkiGenerator::ClientFactory`
+- **Automatic retries** — Faraday retry middleware on OpenRouter (3 attempts, exponential backoff, honors `Retry-After` on 429/5xx)
+- **Structured output** — `--structured` requests JSON mode (`response_format: json_object`) from providers that support it
+- **AnkiConnect push** — `anki_generator push DECK_NAME YAML_FILE` sends cards straight into a running Anki (`AnkiConnect` addon, default `http://localhost:8765`), reporting added/duplicate counts
+- **Web UI** — `anki_generator serve [--port]` starts a localhost editor (WEBrick, no build step): paste Markdown/YAML, generate via AI, edit the card table, download `.apkg`
+
+### Changed
+- `--model` now defaults per provider (`OllamaClient::DEFAULT_MODEL` for Ollama, `gpt-4o-mini` for OpenRouter) instead of a single global default
+- OpenRouter client accepts `structured:` and retry configuration; Ollama client mirrors the same interface
+
+### Technical
+- Test suite: 131 tests, 415 assertions, 96.85% line coverage (floor remains 75%)
+- RuboCop zero offenses; `Metrics/ClassLength` / `Naming/MethodName` exclusions documented for the WEBrick servlet contract and the static HTML page heredoc
+- `.apkg` writer uses per-table id sequences (`@note_seq`/`@card_seq`) — fixes a primary-key collision when a cloze note expands into multiple card rows
+
 ## [1.2.0] - 2026-09-30
 
 ### Breaking

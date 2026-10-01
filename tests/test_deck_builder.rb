@@ -200,7 +200,93 @@ class DeckBuilderTest < Minitest::Test
     assert_equal 2, builder.cards.length
   end
 
+  # --- Reverse cards ---
+
+  def test_add_reverse_cards_doubles_basic_cards
+    builder = builder_for(@deck_yaml)
+    builder.add_reverse_cards!
+
+    assert_equal 4, builder.cards.length
+    reversed = builder.cards.last
+    assert_equal 'Vertices connected by edges.', reversed.front
+    assert_equal 'Define a graph.', reversed.back
+  end
+
+  def test_add_reverse_cards_skips_cloze
+    file = path_for('cloze.yaml')
+    File.write(file,
+               [{ 'front' => 'Q', 'back' => 'A' },
+                { 'cloze' => '{{c1::Ruby}} is a language' }].to_yaml)
+
+    builder = builder_for(file)
+    builder.add_reverse_cards!
+
+    assert_equal 3, builder.cards.length
+    assert_equal 1, builder.cards.count(&:cloze?)
+  end
+
+  # --- Parallel generation ---
+
+  def test_generate_ai_cards_parallel_covers_all_topics
+    client = parallel_spy_client
+    builder = builder_for(@deck_yaml, client:)
+
+    result = builder.generate_ai_cards(topics: %w[T1 T2 T3 T4 T5], jobs: 3)
+
+    assert_equal %w[T1 T2 T3 T4 T5].sort, client.seen_topics.sort
+    assert_equal 5, client.calls.length, 'one API call per topic, spread across workers'
+    assert(client.calls.all? { |call_topics| call_topics.length == 1 })
+    assert_equal 5, result.length
+  end
+
+  def test_generate_ai_cards_jobs_one_uses_single_batched_request
+    client = parallel_spy_client
+    builder = builder_for(@deck_yaml, client:)
+
+    builder.generate_ai_cards(topics: %w[T1 T2], jobs: 1)
+
+    assert_equal 1, client.calls.length, 'jobs: 1 must use one batched call'
+    assert_equal %w[T1 T2], client.calls.first
+  end
+
+  # --- Cards with tags and cloze from YAML ---
+
+  def test_loads_cards_with_tags_and_cloze
+    file = path_for('rich.yaml')
+    File.write(file,
+               [{ 'front' => 'Q', 'back' => 'A', 'tags' => %w[x y] },
+                { 'cloze' => '{{c1::Paris}} is the capital' }].to_yaml)
+
+    builder = builder_for(file)
+
+    assert_equal %w[x y], builder.cards.first.tags
+    assert builder.cards.last.cloze?
+  end
+
   private
+
+  # Spy client that records each call's topics (mutex-guarded, so it is safe to
+  # call from worker threads) and returns one card per requested topic.
+  def parallel_spy_client
+    Class.new do
+      attr_reader :calls
+
+      def initialize
+        @calls = []
+        @lock = Mutex.new
+      end
+
+      def seen_topics
+        @calls.flatten
+      end
+
+      def generate_multiple_flashcards(**kwargs)
+        topics = Array(kwargs[:topics])
+        @lock.synchronize { @calls << topics }
+        topics.map { |topic| { 'front' => "Card about #{topic}", 'back' => 'A' } }
+      end
+    end.new
+  end
 
   def stub_single_client
     Class.new do

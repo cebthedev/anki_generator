@@ -22,6 +22,9 @@ Metrics/ClassLength:
   Max: 150
   Exclude:
     - 'tests/**/*'
+    # The server class embeds the single-page UI as one static HTML heredoc;
+    # its size is data, not design.
+    - 'lib/anki_generator/server.rb'
 
 Metrics/BlockLength:
   Max: 30
@@ -41,6 +44,12 @@ Metrics/CyclomaticComplexity:
 Metrics/PerceivedComplexity:
   Max: 10
 
+# The schema module is static Anki data (SQL + default JSON blobs); its size is
+# driven by the format, not by design choices.
+Metrics/ModuleLength:
+  Exclude:
+    - 'lib/anki_generator/apkg_schema.rb'
+
 # Command initializers take their full option surface as keyword arguments;
 # counting them against the positional-parameter limit is meaningless.
 Metrics/ParameterLists:
@@ -55,16 +64,15 @@ Naming/MethodParameterName:
     - db
     - e
 
+# WEBrick dispatches to servlets via the camelCase do_GET/do_POST contract.
+Naming/MethodName:
+  Exclude:
+    - 'lib/anki_generator/server.rb'
+
 # Test class names are self-describing.
 Style/Documentation:
   Exclude:
     - 'tests/**/*'
-
-# The schema module is static Anki data (SQL + default JSON blobs); its size is
-# driven by the format, not by design choices.
-Metrics/ModuleLength:
-  Exclude:
-    - 'lib/anki_generator/apkg_schema.rb'
 
 # CLI output strings legitimately use double quotes for interpolation.
 Style/StringLiterals:
