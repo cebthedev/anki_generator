@@ -1,0 +1,310 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Anki Generator — Phase 3: Hosted Sync Service",
+    "output": "phase3-architecture.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "views": [
+      {
+        "id": "sync-path",
+        "label": "Offline-first sync",
+        "focus": [
+          "android",
+          "ios",
+          "api",
+          "postgres"
+        ],
+        "note": "Apps cache decks locally and sync deltas over HTTPS; the API is the only server surface."
+      },
+      {
+        "id": "generation-path",
+        "label": "Async AI generation",
+        "focus": [
+          "api",
+          "queue",
+          "gensvc",
+          "llm",
+          "postgres",
+          "objectstore"
+        ],
+        "note": "Generation is a background job: the API enqueues, the worker reuses the gem and writes cards back."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "android",
+      "type": "frontend",
+      "label": "Android app",
+      "sublabel": "offline cache · Kotlin",
+      "pos": [
+        40,
+        80
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "ios",
+      "type": "frontend",
+      "label": "iOS app",
+      "sublabel": "offline cache · Swift",
+      "pos": [
+        40,
+        220
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "Web client",
+      "sublabel": "hosted serve UI",
+      "pos": [
+        40,
+        360
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Sync API",
+      "sublabel": "Ruby · JSON / HTTPS",
+      "pos": [
+        320,
+        220
+      ],
+      "size": [
+        150,
+        70
+      ],
+      "tag": "auth: magic link / JWT"
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "users · decks · cards",
+      "pos": [
+        580,
+        220
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "queue",
+      "type": "messagebus",
+      "label": "Job queue",
+      "sublabel": "Solid Queue",
+      "pos": [
+        320,
+        396
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "gensvc",
+      "type": "backend",
+      "label": "Generation worker",
+      "sublabel": "reuses anki_generator gem",
+      "pos": [
+        580,
+        396
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "objectstore",
+      "type": "cloud",
+      "label": "Object storage",
+      "sublabel": ".apkg exports",
+      "pos": [
+        860,
+        82
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "cloud",
+      "label": "LLM providers",
+      "sublabel": "OpenRouter · Ollama",
+      "pos": [
+        880,
+        396
+      ],
+      "size": [
+        150,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Single small VPS / container host (cheap to run)",
+      "wraps": [
+        "api",
+        "postgres",
+        "queue",
+        "gensvc"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "User devices",
+      "wraps": [
+        "android",
+        "ios",
+        "web"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "android-sync",
+      "from": "android",
+      "to": "api",
+      "label": "HTTPS sync",
+      "variant": "emphasis",
+      "toSide": "top",
+      "via": [
+        [
+          255,
+          112
+        ],
+        [
+          255,
+          150
+        ],
+        [
+          395,
+          150
+        ]
+      ]
+    },
+    {
+      "id": "ios-sync",
+      "from": "ios",
+      "to": "api",
+      "variant": "emphasis"
+    },
+    {
+      "id": "web-sync",
+      "from": "web",
+      "to": "api",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "api-sql",
+      "from": "api",
+      "to": "postgres",
+      "label": "SQL"
+    },
+    {
+      "id": "enqueue",
+      "from": "api",
+      "to": "queue",
+      "label": "enqueue",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        395,
+        340
+      ]
+    },
+    {
+      "id": "queue-to-worker",
+      "from": "queue",
+      "to": "gensvc"
+    },
+    {
+      "id": "worker-to-llm",
+      "from": "gensvc",
+      "to": "llm",
+      "label": "completions",
+      "variant": "dashed"
+    },
+    {
+      "id": "worker-writes",
+      "from": "gensvc",
+      "to": "postgres",
+      "label": "insert cards",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "export-store",
+      "from": "api",
+      "to": "objectstore",
+      "label": "store .apkg",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "via": [
+        [
+          395,
+          175
+        ],
+        [
+          935,
+          175
+        ]
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Clients: offline first",
+      "items": [
+        "Decks cached in SQLite (SQLDelight / GRDB) so study works with no network",
+        "Sync sends only deltas: card edits, review state, new decks",
+        "Generation requests return a job id; cards appear when the job finishes"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Service: reuse the gem",
+      "items": [
+        "Sync API is a thin Ruby service over the existing AnkiGenerator::* objects",
+        "Solid Queue + one worker process run AI generation out of request path",
+        "Web client is today's serve UI with auth and the API as backend"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Cost: hobbyist scale",
+      "items": [
+        "One small VPS or free-tier container runs API + worker + queue",
+        "PostgreSQL: managed free tier or the same VPS",
+        "LLM cost stays pay-per-use via OpenRouter, or $0 with a local Ollama sidecar"
+      ]
+    }
+  ]
+}

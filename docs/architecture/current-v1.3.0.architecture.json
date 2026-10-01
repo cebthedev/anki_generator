@@ -1,0 +1,315 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Anki Generator v1.3.0 — Current Architecture",
+    "output": "current-architecture.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/pinkfloydsito/anki-generator",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "02ae43a749820e5658d9790fa12a4a77f8a3f501"
+    },
+    "views": [
+      {
+        "id": "main-path",
+        "label": "Deck build path",
+        "focus": [
+          "cli",
+          "webui",
+          "core",
+          "apkgwriter",
+          "apkgfile"
+        ],
+        "note": "YAML, Markdown, or AI-generated cards become a native .apkg without any server."
+      },
+      {
+        "id": "ai-and-push",
+        "label": "AI generation and push",
+        "focus": [
+          "cli",
+          "core",
+          "providers",
+          "ankiconnect",
+          "anki"
+        ],
+        "note": "Providers are pluggable behind ClientFactory; push talks to a local Anki over HTTP."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "anki_generator CLI",
+      "sublabel": "Thor commands",
+      "pos": [
+        40,
+        140
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "lib/anki_generator/cli.rb",
+          "label": "Thor CLI"
+        }
+      ]
+    },
+    {
+      "id": "webui",
+      "type": "frontend",
+      "label": "serve Web UI",
+      "sublabel": "WEBrick 127.0.0.1:8787",
+      "pos": [
+        40,
+        320
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "lib/anki_generator/server.rb",
+          "label": "WEBrick servlets"
+        }
+      ]
+    },
+    {
+      "id": "importers",
+      "type": "backend",
+      "label": "Importers",
+      "sublabel": "Markdown · CSV",
+      "pos": [
+        40,
+        424
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "lib/anki_generator/importers/markdown.rb",
+          "label": "Markdown importer"
+        }
+      ]
+    },
+    {
+      "id": "core",
+      "type": "backend",
+      "label": "anki_generator gem",
+      "sublabel": "Commands · DeckBuilder · Card",
+      "pos": [
+        360,
+        270
+      ],
+      "size": [
+        170,
+        70
+      ],
+      "sources": [
+        {
+          "path": "lib/anki_generator/deck_builder.rb",
+          "label": "DeckBuilder"
+        }
+      ]
+    },
+    {
+      "id": "providers",
+      "type": "cloud",
+      "label": "LLM Providers",
+      "sublabel": "OpenRouter · Ollama",
+      "pos": [
+        360,
+        96
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "lib/anki_generator/client_factory.rb",
+          "label": "ClientFactory"
+        }
+      ]
+    },
+    {
+      "id": "apkgwriter",
+      "type": "backend",
+      "label": "ApkgWriter + Schema",
+      "sublabel": "zip + SQLite",
+      "pos": [
+        620,
+        270
+      ],
+      "size": [
+        170,
+        70
+      ],
+      "sources": [
+        {
+          "path": "lib/anki_generator/apkg_writer.rb",
+          "label": "ApkgWriter"
+        }
+      ]
+    },
+    {
+      "id": "apkgfile",
+      "type": "database",
+      "label": ".apkg file",
+      "sublabel": "import into Anki",
+      "pos": [
+        870,
+        270
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "ankiconnect",
+      "type": "external",
+      "label": "AnkiConnect",
+      "sublabel": "localhost:8765",
+      "pos": [
+        620,
+        424
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "anki",
+      "type": "external",
+      "label": "Anki Desktop",
+      "sublabel": "review + sync",
+      "pos": [
+        870,
+        424
+      ],
+      "size": [
+        140,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Local machine — no server required",
+      "wraps": [
+        "cli",
+        "webui",
+        "importers",
+        "core",
+        "apkgwriter",
+        "apkgfile",
+        "ankiconnect",
+        "anki"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "cli-to-core",
+      "from": "cli",
+      "to": "core",
+      "label": "Thor commands",
+      "variant": "emphasis"
+    },
+    {
+      "id": "webui-to-core",
+      "from": "webui",
+      "to": "core",
+      "label": "parse / generate / export"
+    },
+    {
+      "id": "importers-to-core",
+      "from": "importers",
+      "to": "core",
+      "label": "card hashes",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "via": [
+        [
+          445,
+          456
+        ]
+      ]
+    },
+    {
+      "id": "core-to-providers",
+      "from": "core",
+      "to": "providers",
+      "label": "chat completions",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "variant": "dashed"
+    },
+    {
+      "id": "core-to-writer",
+      "from": "core",
+      "to": "apkgwriter",
+      "label": "cards",
+      "variant": "emphasis"
+    },
+    {
+      "id": "writer-to-file",
+      "from": "apkgwriter",
+      "to": "apkgfile",
+      "label": "write archive"
+    },
+    {
+      "id": "core-to-ankiconnect",
+      "from": "core",
+      "to": "ankiconnect",
+      "label": "push_deck",
+      "variant": "dashed"
+    },
+    {
+      "id": "ankiconnect-to-anki",
+      "from": "ankiconnect",
+      "to": "anki",
+      "label": "addNotes"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Input surface",
+      "items": [
+        "CLI: generate, import, push, serve, prompt_to_deck",
+        "Web editor: paste Markdown, AI-generate, export",
+        "Importers turn Markdown / CSV notes into cards"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Core library",
+      "items": [
+        "Namespaced AnkiGenerator::* service objects with DI",
+        "Native .apkg writer (zip + SQLite), cloze model, tags",
+        "Pluggable providers: OpenRouter (retries) or local Ollama"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Quality bar",
+      "items": [
+        "132 tests, 417 assertions, 96.85% line coverage",
+        "RuboCop zero offenses enforced in CI",
+        "Documented cop exclusions only for data blobs and WEBrick contracts"
+      ]
+    }
+  ]
+}
