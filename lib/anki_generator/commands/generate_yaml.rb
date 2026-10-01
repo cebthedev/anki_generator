@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'prompt_based'
-require_relative '../openrouter_client'
+require_relative '../client_factory'
 require_relative '../ui'
 
 module AnkiGenerator
@@ -10,7 +10,7 @@ module AnkiGenerator
     class GenerateYaml
       include PromptBased
 
-      def initialize(prompt:, output_yaml:, model: OpenRouterClient::DEFAULT_MODEL, difficulty: 'medium',
+      def initialize(prompt:, output_yaml:, model: LlmClient::DEFAULT_MODEL, difficulty: 'medium',
                      count: 10, context: nil, attach: nil, prompt_file: false,
                      client: nil, ui: UI.new)
         @prompt = prompt
@@ -20,7 +20,7 @@ module AnkiGenerator
         @context = context
         @attach = attach
         @prompt_file = prompt_file
-        @client = client || OpenRouterClient.new(model:)
+        @client = client || ClientFactory.build(model:)
         @ui = ui
       end
 

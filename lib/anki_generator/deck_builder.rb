@@ -5,7 +5,7 @@ require 'yaml'
 require_relative 'apkg_writer'
 require_relative 'card'
 require_relative 'errors'
-require_relative 'openrouter_client'
+require_relative 'client_factory'
 require_relative 'ui'
 
 module AnkiGenerator

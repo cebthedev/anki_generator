@@ -1,8 +1,17 @@
 # frozen_string_literal: true
 
+require 'stringio'
 require 'webrick'
 require_relative '../server'
 require_relative '../ui'
+
+begin
+  require 'rackup'
+  require 'rackup/handler/webrick'
+rescue LoadError
+  # rackup gem not installed (it is not in the lockfile) — the small adapter
+  # below bridges WEBrick to the Rack app instead.
+end
 
 module AnkiGenerator
   module Commands
@@ -10,7 +19,7 @@ module AnkiGenerator
     class Serve
       DEFAULT_PORT = 8787
 
-      def initialize(port: DEFAULT_PORT, provider: 'openrouter', ui: UI.new)
+      def initialize(port: DEFAULT_PORT, provider: nil, ui: UI.new)
         @port = port
         @provider = provider
         @ui = ui
@@ -18,38 +27,72 @@ module AnkiGenerator
 
       # Blocks until the server is stopped (Ctrl+C).
       def run
-        server = build_server
-        Server.mount(server, provider: @provider)
+        AnkiGenerator::Server.set(:default_provider, @provider)
 
         @ui.info("Anki Generator UI available at http://localhost:#{@port}")
         @ui.info('Press Ctrl+C to stop')
 
+        if defined?(Rackup::Handler::WEBrick)
+          Rackup::Handler::WEBrick.run(
+            AnkiGenerator::Server,
+            Host: '127.0.0.1', Port: @port,
+            AccessLog: [], Logger: WEBrick::Log.new(File::NULL)
+          )
+        else
+          run_webrick
+        end
+      end
+
+      private
+
+      def run_webrick
+        server = WEBrick::HTTPServer.new(
+          BindAddress: '127.0.0.1',
+          Port: @port,
+          Logger: WEBrick::Log.new(File::NULL),
+          AccessLog: []
+        )
+        server.mount('/', RackServlet, AnkiGenerator::Server)
         trap('INT') { server.shutdown }
         server.start
       ensure
         server&.shutdown
       end
 
-      # Starts the server on an ephemeral port in a background thread and
-      # returns [server, port]; used by tests and embedding.
-      def self.start_background(**kwargs)
-        command = new(**kwargs)
-        server = command.send(:build_server)
-        Server.mount(server, provider: kwargs[:provider] || 'openrouter')
-        thread = Thread.new { server.start }
-        Thread.pass until server.status == :Running
-        [server, server.config[:Port], thread]
-      end
+      # Minimal WEBrick -> Rack bridge used when the rackup gem is unavailable.
+      class RackServlet < WEBrick::HTTPServlet::AbstractServlet
+        def initialize(server, app)
+          super(server)
+          @app = app
+        end
 
-      private
+        def service(request, response)
+          status, headers, body = @app.call(rack_env(request))
+          response.status = status
+          headers.each do |key, value|
+            next if key.start_with?('rack.')
 
-      def build_server
-        WEBrick::HTTPServer.new(
-          BindAddress: '127.0.0.1',
-          Port: @port,
-          Logger: WEBrick::Log.new(File::NULL),
-          AccessLog: []
-        )
+            response[key] = value.is_a?(Array) ? value.join(', ') : value.to_s
+          end
+          response.body = +''
+          body.each { |part| response.body << part.to_s }
+          body.close if body.respond_to?(:close)
+        end
+
+        private
+
+        def rack_env(request)
+          env = request.meta_vars
+          env['CONTENT_TYPE'] ||= env.delete('Content-Type')
+          env['CONTENT_LENGTH'] ||= env.delete('Content-Length')
+          env.update(
+            'rack.version' => Rack::RELEASE,
+            'rack.input' => StringIO.new(request.body.to_s),
+            'rack.errors' => $stderr,
+            'rack.url_scheme' => request.ssl? ? 'https' : 'http'
+          )
+          env
+        end
       end
     end
   end

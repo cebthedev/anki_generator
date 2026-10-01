@@ -20,22 +20,22 @@ module AnkiGenerator
   # arguments with Thor and delegates to command objects in
   # AnkiGenerator::Commands, which hold the actual behaviour.
   class CLI < Thor
-    DEFAULT_MODEL = OpenRouterClient::DEFAULT_MODEL
+    DEFAULT_MODEL = LlmClient::DEFAULT_MODEL
 
     def self.exit_on_failure?
       true
     end
 
     class_option :provider,
-                 type: :string, default: 'openrouter', enum: ClientFactory::PROVIDERS,
-                 desc: 'LLM provider (openrouter or ollama)'
+                 type: :string, default: nil,
+                 desc: 'LLM provider (e.g. gemini, openai, anthropic, openrouter, ollama); ' \
+                       'auto-resolved from the model when omitted'
 
     desc 'generate DECK_NAME YAML_FILE OUTPUT_FILE', 'Generate an Anki .apkg deck from a YAML file'
-    option :api_key, type: :string, desc: 'OpenRouter API key (or set OPENROUTER_API_KEY env var)'
+    option :api_key, type: :string, desc: 'Provider API key (defaults to the provider env var, e.g. GEMINI_API_KEY)'
     option :model, type: :string, desc: 'AI model to use (provider default if omitted)'
     option :sync_with, type: :string, desc: 'Existing YAML file to sync with'
     option :reverse, type: :boolean, default: false, desc: 'Add reversed copy of each basic card'
-    option :structured, type: :boolean, default: false, desc: 'Ask the model for strict JSON output'
     option :jobs, type: :numeric, default: 1, desc: 'Parallel API calls for multi-topic generation'
     def generate(deck_name, yaml_file, output_file)
       run_command Commands::GenerateDeck,
@@ -50,14 +50,13 @@ module AnkiGenerator
     end
 
     desc 'generate_yaml PROMPT OUTPUT_YAML', 'Generate a YAML file from a prompt using AI'
-    option :api_key, type: :string, desc: 'OpenRouter API key (or set OPENROUTER_API_KEY env var)'
+    option :api_key, type: :string, desc: 'Provider API key (defaults to the provider env var, e.g. GEMINI_API_KEY)'
     option :model, type: :string, desc: 'AI model to use (provider default if omitted)'
     option :difficulty, type: :string, default: 'medium', desc: 'Difficulty level (easy, medium, hard)'
     option :count, type: :numeric, default: 10, desc: 'Number of flashcards to generate'
     option :context, type: :string, desc: 'Additional context for better generation'
     option :attach, type: :array, desc: 'Attach files or directories for context'
     option :prompt_file, type: :boolean, default: false, desc: 'Treat PROMPT as a file path to read from'
-    option :structured, type: :boolean, default: false, desc: 'Ask the model for strict JSON output'
     def generate_yaml(prompt, output_yaml)
       run_command Commands::GenerateYaml,
                   prompt:,
@@ -72,7 +71,7 @@ module AnkiGenerator
     end
 
     desc 'prompt_to_deck PROMPT DECK_NAME OUTPUT_FILE', 'Generate flashcards from prompt and create deck in one step'
-    option :api_key, type: :string, desc: 'OpenRouter API key (or set OPENROUTER_API_KEY env var)'
+    option :api_key, type: :string, desc: 'Provider API key (defaults to the provider env var, e.g. GEMINI_API_KEY)'
     option :model, type: :string, desc: 'AI model to use (provider default if omitted)'
     option :difficulty, type: :string, default: 'medium', desc: 'Difficulty level (easy, medium, hard)'
     option :count, type: :numeric, default: 10, desc: 'Number of flashcards to generate'
@@ -80,7 +79,6 @@ module AnkiGenerator
     option :save_yaml, type: :boolean, default: false, desc: 'Save intermediate YAML file'
     option :attach, type: :array, desc: 'Attach files or directories for context'
     option :prompt_file, type: :boolean, default: false, desc: 'Treat PROMPT as a file path to read from'
-    option :structured, type: :boolean, default: false, desc: 'Ask the model for strict JSON output'
     def prompt_to_deck(prompt, deck_name, output_file)
       run_command Commands::PromptToDeck,
                   prompt:,
@@ -135,9 +133,8 @@ module AnkiGenerator
     end
 
     desc 'test_api', 'Test the LLM API connection'
-    option :api_key, type: :string, desc: 'OpenRouter API key (or set OPENROUTER_API_KEY env var)'
+    option :api_key, type: :string, desc: 'Provider API key (defaults to the provider env var, e.g. GEMINI_API_KEY)'
     option :model, type: :string, desc: 'AI model to use (provider default if omitted)'
-    option :structured, type: :boolean, default: false, desc: 'Ask the model for strict JSON output'
     def test_api
       run_command Commands::TestApi, model: option_model, client: build_client
     end
@@ -159,25 +156,28 @@ module AnkiGenerator
     end
 
     def option_model
-      options[:model] || default_model_for(options[:provider])
+      options[:model] || ENV.fetch('ANKI_GENERATOR_MODEL', nil) || DEFAULT_MODEL
     end
 
-    def default_model_for(provider)
-      provider.to_s == 'ollama' ? OllamaClient::DEFAULT_MODEL : DEFAULT_MODEL
+    # The API key comes from --api_key; otherwise the standard provider env
+    # vars (GEMINI_API_KEY, OPENAI_API_KEY, ...) are picked up by LlmClient
+    # itself. With required: false and no key anywhere, yields nil (commands
+    # then skip AI generation instead of failing).
+    def build_client(required: true)
+      api_key = options[:api_key]
+      if api_key && !api_key.empty?
+        return ClientFactory.build(provider: options[:provider], model: option_model, api_key:)
+      end
+
+      return ClientFactory.build(provider: options[:provider], model: option_model) if !required || llm_configured?
+
+      raise ConfigurationError,
+            'An LLM API key is required (use --api_key or set an env var such as GOOGLE_API_KEY)'
     end
 
-    # Ollama needs no key; OpenRouter falls back to the environment when the
-    # --api_key option is not given. With required: false a missing key yields
-    # nil (commands then skip AI generation instead of failing).
-    def build_client(required: true, structured: options[:structured])
-      provider = options[:provider]
-      return ClientFactory.build(provider:, model: option_model) if provider.to_s == 'ollama'
-
-      api_key = options[:api_key] || ENV.fetch('OPENROUTER_API_KEY', nil)
-      return ClientFactory.build(provider:, model: option_model, api_key:, structured:) if api_key && !api_key.empty?
-      return nil unless required
-
-      raise ConfigurationError, 'OpenRouter API key is required (use --api_key or set OPENROUTER_API_KEY)'
+    def llm_configured?
+      (LlmClient::ENV_KEY_VARS + ['GOOGLE_API_KEY']).any? { |name| !(ENV.fetch(name, nil) || '').empty? } ||
+        !(ENV.fetch('OLLAMA_URL', nil) || '').empty?
     end
   end
 end

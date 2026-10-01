@@ -73,7 +73,7 @@ class CliTest < Minitest::Test
     assert_includes push.options.keys.map(&:to_sym), :url
 
     generate = AnkiGenerator::CLI.commands['generate']
-    %i[reverse structured jobs].each do |opt|
+    %i[reverse jobs].each do |opt|
       assert_includes generate.options.keys.map(&:to_sym), opt
     end
   end
@@ -95,10 +95,12 @@ class CliTest < Minitest::Test
   end
 
   def test_default_options
-    # The model default is provider-dependent, resolved at runtime via
-    # option_model rather than a fixed Thor default.
+    # The model default is resolved at runtime via option_model rather than
+    # a fixed Thor default; the provider defaults to nil (auto-resolved from
+    # the model name by ruby_llm) and accepts any ruby_llm provider name.
     assert_nil AnkiGenerator::CLI.commands['generate_yaml'].options[:model].default
-    assert_equal 'openrouter', AnkiGenerator::CLI.class_options[:provider].default
+    assert_nil AnkiGenerator::CLI.class_options[:provider].default
+    assert_nil AnkiGenerator::CLI.class_options[:provider].enum
 
     prompt_to_deck = AnkiGenerator::CLI.commands['prompt_to_deck']
     assert_equal 'medium', prompt_to_deck.options[:difficulty].default

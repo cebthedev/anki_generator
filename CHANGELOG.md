@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-10-01
+
+### Breaking
+- **Provider-agnostic LLM layer** — the hand-rolled `OpenRouterClient` and `OllamaClient` (Faraday) are replaced by a single `AnkiGenerator::LlmClient` backed by [ruby_llm](https://github.com/crmne/ruby_llm). Gemini is now the default provider (`gemini-3.8-flash`); OpenAI, Anthropic, OpenRouter, and local Ollama (plus any other ruby_llm provider) work through the same client
+- API keys move to provider env vars — `GOOGLE_API_KEY` / `GEMINI_API_KEY` (default), `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OLLAMA_URL` for local Ollama; `OPENROUTER_API_KEY` alone no longer drives the tool
+- `--provider` is now free-form (any ruby_llm provider name) and defaults to auto-resolution from the model name; `--provider openrouter|ollama` enum is gone
+- `--api-key` now requires an explicit `--provider`
+- `--structured` flag removed — structured output is always on (see below)
+- Dependencies: `faraday` / `faraday-retry` dropped; `ruby_llm ~> 2.0` and `sinatra ~> 4.0` added
+
+### Added
+- **Structured outputs** — card generation now uses ruby_llm/Schematist JSON Schema (`AnkiGenerator::SingleCardSchema` / `MultipleCardsSchema`), so providers validate the card shape at the API level; non-conforming responses raise `ResponseParseError`
+- `GOOGLE_API_KEY` acts as a fallback for the Gemini key when `GEMINI_API_KEY` is unset (bridged into `RubyLLM.configure` by `LlmClient`)
+- `AnkiGenerator::TEMPERATURE` constant (0.7) exposed on the client
+- `anki_generator serve [--provider PROVIDER]` — the web editor can now default to a chosen LLM provider
+
+### Changed
+- **Web server rewritten on Sinatra 4** (was WEBrick servlets + inline HTML heredoc): routes live in `AnkiGenerator::Server`, the UI page moved to `lib/anki_generator/server/public/index.html`, YAML parsing extracted to `AnkiGenerator::Importers::Yaml`, and `.apkg` building to `AnkiGenerator::ApkgExporter` — each concern is now independently testable
+- Default model: `gemini-3.8-flash`
+- `--model` / `ANKI_GENERATOR_MODEL` override the default as before
+- README rewritten for the new provider model
+
+### Technical
+- Test suite: 125 tests, 0 failures, 94% line coverage — server tests moved to rack-test (no real sockets); LLM tests webmock-stub the Gemini `generateContent` endpoint including schema request-body assertions
+- RuboCop zero offenses
+- Note: ruby_llm 2.0 does not auto-detect provider ENV vars — `LlmClient` bridges them
+
 ## [1.3.0] - 2026-09-30
 
 ### Added

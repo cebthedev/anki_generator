@@ -8,7 +8,7 @@ module AnkiGenerator
   # Raised when required configuration (e.g. API key) is missing or invalid.
   class ConfigurationError < Error; end
 
-  # Raised when the OpenRouter API responds with an error status.
+  # Raised when the LLM provider responds with an error status.
   class ApiError < Error; end
 
   # Raised when the API response cannot be parsed into flashcards.

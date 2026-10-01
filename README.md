@@ -1,17 +1,17 @@
 # Anki Generator
 
-A Ruby tool to generate Anki .apkg files from YAML definitions, Markdown notes, or CSV files — with AI-powered content generation (OpenRouter or local Ollama), cloze deletions, tags, and a built-in web editor.
+A Ruby tool to generate Anki .apkg files from YAML definitions, Markdown notes, or CSV files — with AI-powered content generation (Gemini, OpenAI, Anthropic, OpenRouter, or local Ollama via [ruby_llm](https://github.com/crmne/ruby_llm)), cloze deletions, tags, and a built-in web editor.
 
 ## Features
 
-- **AI-Powered Generation**: Create flashcards using OpenRouter API or a local Ollama server, with multiple AI models (GPT, Claude, Llama, etc.)
+- **AI-Powered Generation**: Create flashcards using any LLM provider supported by [ruby_llm](https://github.com/crmne/ruby_llm) — Gemini, OpenAI, Anthropic, OpenRouter, or a local Ollama server — with multiple AI models
 - **Markdown & CSV Import**: Turn `Q:`/`A:` study notes or spreadsheets into decks; Markdown headings become tags
 - **Cloze Deletion Cards**: `{{cN::...}}` deletions export as real Anki cloze notes (one card per deletion)
 - **Tags & Reverse Cards**: Per-card tags in Anki, plus `--reverse` for recognition + recall pairs
 - **Web UI**: `anki_generator serve` opens a localhost editor — paste notes, generate with AI, export `.apkg`
 - **AnkiConnect Push**: Send decks straight into a running Anki with the AnkiConnect addon
 - **Parallel Generation**: `--jobs N` fans one API call per topic out across threads
-- **Resilient API Client**: Automatic retries with backoff, timeouts, structured JSON output mode
+- **Reliable AI Output**: Structured generation via ruby_llm Schematist schemas — cards come back as validated JSON, not prompt-honoured text
 - **File Attachment Support**: Attach code files, documentation, or entire directories for context-aware generation
 - **Prompt File Support**: Use text files as prompts for better organization and reusability
 - **Multiple Input Methods**: Generate from YAML files, direct prompts, file attachments, Markdown, or CSV
@@ -31,10 +31,10 @@ A Ruby tool to generate Anki .apkg files from YAML definitions, Markdown notes, 
    bundle install
    ```
 
-3. Set up your OpenRouter API key:
+3. Set up your LLM API key (e.g. Google Gemini):
    ```bash
    cp .env.example .env
-   # Edit .env and add your OpenRouter API key
+   # Edit .env and add your GOOGLE_API_KEY (https://aistudio.google.com/apikey)
    ```
 
 ## Usage
@@ -44,14 +44,17 @@ A Ruby tool to generate Anki .apkg files from YAML definitions, Markdown notes, 
 The fastest way to create flashcards is directly from a prompt:
 
 ```bash
-# Generate flashcards and create deck in one step
-./bin/anki_generator prompt_to_deck "Ruby programming basics" "Ruby Deck" ruby_deck.apkg --api_key YOUR_API_KEY
+# Generate flashcards and create deck in one step (API key from .env)
+./bin/anki_generator prompt_to_deck "Ruby programming basics" "Ruby Deck" ruby_deck.apkg
+
+# Or pass the key explicitly (requires --provider)
+./bin/anki_generator prompt_to_deck "Ruby programming basics" "Ruby Deck" ruby_deck.apkg --provider gemini --api_key YOUR_API_KEY
 
 # Generate from a prompt file with code attachments
-./bin/anki_generator prompt_to_deck study_prompt.txt "Code Study" code_deck.apkg --prompt-file --attach ./src --api_key YOUR_API_KEY
+./bin/anki_generator prompt_to_deck study_prompt.txt "Code Study" code_deck.apkg --prompt_file --attach ./src
 
 # Generate just the YAML file first
-./bin/anki_generator generate_yaml "JavaScript fundamentals" js_cards.yaml --api_key YOUR_API_KEY --count 15
+./bin/anki_generator generate_yaml "JavaScript fundamentals" js_cards.yaml --count 15
 
 # Then create the deck
 ./bin/anki_generator generate "JS Deck" js_cards.yaml js_deck.apkg
@@ -83,11 +86,12 @@ Turn existing study notes into a deck:
 ### Web Editor
 
 ```bash
-./bin/anki_generator serve            # http://127.0.0.1:8787
+./bin/anki_generator serve                     # http://localhost:8787
 ./bin/anki_generator serve --port 9000
+./bin/anki_generator serve --provider ollama   # default AI generation in the UI to Ollama
 ```
 
-Paste Markdown/YAML on the left, generate cards with AI, edit the table, export `.apkg`.
+The web editor is a local Sinatra app. Paste Markdown/YAML on the left, generate cards with AI, edit the table, export `.apkg`. `--provider` sets the default provider for AI generation in the UI; any provider-specific key still comes from the environment.
 
 ### Push to a Running Anki
 
@@ -109,7 +113,7 @@ Create an AI generation template:
 Generate a deck with AI content:
 
 ```bash
-./bin/anki_generator generate "AI Deck" my_ai_deck.yaml ai_deck.apkg --api_key YOUR_API_KEY
+./bin/anki_generator generate "AI Deck" my_ai_deck.yaml ai_deck.apkg
 ```
 
 ### Advanced Options
@@ -125,7 +129,7 @@ Generate a deck with AI content:
 ./bin/anki_generator prompt_to_deck "Machine Learning" "ML Deck" ml.apkg --context "For computer science students" --difficulty medium
 
 # Use prompt from file
-./bin/anki_generator generate_yaml prompt.txt output.yaml --prompt-file
+./bin/anki_generator generate_yaml prompt.txt output.yaml --prompt_file
 
 # Attach files for context
 ./bin/anki_generator prompt_to_deck "Explain this code" "Code Deck" code.apkg --attach src/main.rb --attach config.yml
@@ -134,25 +138,25 @@ Generate a deck with AI content:
 ./bin/anki_generator generate_yaml "Create cards about this project" project.yaml --attach ./src --attach ./docs
 
 # Combine file prompt with attachments
-./bin/anki_generator prompt_to_deck prompt.txt "My Deck" deck.apkg --prompt-file --attach ./examples
+./bin/anki_generator prompt_to_deck prompt.txt "My Deck" deck.apkg --prompt_file --attach ./examples
 
 # Save intermediate YAML file
-./bin/anki_generator prompt_to_deck "React hooks" "React Deck" react.apkg --save-yaml
+./bin/anki_generator prompt_to_deck "React hooks" "React Deck" react.apkg --save_yaml
 
 # Sync with existing deck
 ./bin/anki_generator generate "My Deck" input.yaml output.apkg --sync_with existing_deck.yaml
 
-# Test API connection
-./bin/anki_generator test_api --api_key YOUR_API_KEY
+# Test API connection (uses the key from .env)
+./bin/anki_generator test_api
 
-# Use a local Ollama model instead of OpenRouter (no API key needed)
+# Test a specific provider with an explicit key
+./bin/anki_generator test_api --provider openai --api_key YOUR_API_KEY
+
+# Use a local Ollama model instead of a cloud provider (no API key needed)
 ./bin/anki_generator prompt_to_deck "Ruby basics" "Ruby" ruby.apkg --provider ollama --model llama3.2
 
 # Generate one API call per topic, 4 at a time
-./bin/anki_generator generate "AI Deck" ai.yaml out.apkg --api_key KEY --jobs 4
-
-# Ask the model for strict JSON output (supported models)
-./bin/anki_generator generate_yaml "Databases" db.yaml --structured
+./bin/anki_generator generate "AI Deck" ai.yaml out.apkg --jobs 4
 
 # Basic + reversed cards from a YAML deck
 ./bin/anki_generator generate "My Deck" input.yaml out.apkg --reverse
@@ -168,9 +172,10 @@ anki_generator prompt_to_deck PROMPT DECK_NAME OUTPUT_FILE [options]
 
 **Options:**
 - `--attach FILE_OR_DIR [FILE_OR_DIR...]` - Attach files or directories for context
-- `--prompt-file` - Treat PROMPT as a file path to read from
-- `--save-yaml` - Save intermediate YAML file
-- `--api-key API_KEY` - OpenRouter API key
+- `--prompt_file` - Treat PROMPT as a file path to read from
+- `--save_yaml` - Save intermediate YAML file
+- `--provider PROVIDER` - LLM provider (gemini/openai/anthropic/openrouter/ollama/...); auto-resolved from the model when omitted
+- `--api_key API_KEY` - Provider API key (requires `--provider`; otherwise the provider env var is used)
 - `--model MODEL` - AI model to use
 - `--difficulty LEVEL` - Difficulty level (easy, medium, hard)
 - `--count N` - Number of flashcards to generate
@@ -184,8 +189,9 @@ anki_generator generate_yaml PROMPT OUTPUT_YAML [options]
 
 **Options:**
 - `--attach FILE_OR_DIR [FILE_OR_DIR...]` - Attach files or directories for context
-- `--prompt-file` - Treat PROMPT as a file path to read from
-- `--api-key API_KEY` - OpenRouter API key
+- `--prompt_file` - Treat PROMPT as a file path to read from
+- `--provider PROVIDER` - LLM provider (gemini/openai/anthropic/openrouter/ollama/...); auto-resolved from the model when omitted
+- `--api_key API_KEY` - Provider API key (requires `--provider`; otherwise the provider env var is used)
 - `--model MODEL` - AI model to use
 - `--difficulty LEVEL` - Difficulty level (easy, medium, hard)
 - `--count N` - Number of flashcards to generate
@@ -200,8 +206,8 @@ anki_generator generate DECK_NAME YAML_FILE OUTPUT_FILE [options]
 **Options:**
 - `--reverse` - Append a front↔back copy of every basic card
 - `--jobs N` - Generate AI topics in parallel across N threads
-- `--structured` - Request strict JSON output from the model
-- `--api-key`, `--model`, `--provider` (openrouter/ollama), `--sync_with`
+- `--sync_with YAML_FILE` - Existing YAML file to merge with (skips duplicate fronts)
+- `--provider PROVIDER`, `--api_key API_KEY` (requires `--provider`), `--model MODEL`
 
 ### `import` - Import Markdown or CSV
 Turn study notes into a deck:
@@ -224,10 +230,12 @@ anki_generator push DECK_NAME YAML_FILE [options]
 - `--url URL` - AnkiConnect endpoint (default `http://localhost:8765`)
 
 ### `serve` - Web Editor
-Start the localhost editor UI:
+Start the localhost editor UI (Sinatra, default port 8787):
 ```bash
-anki_generator serve [--port PORT]
+anki_generator serve [--port PORT] [--provider PROVIDER]
 ```
+
+`--provider` sets the default provider for AI generation in the UI.
 
 ### `create_ai_template` - Create Template
 Create a template YAML file for AI generation:
@@ -236,9 +244,9 @@ anki_generator create_ai_template TEMPLATE_FILE
 ```
 
 ### `test_api` - Test Connection
-Test your OpenRouter API connection:
+Test your LLM connection:
 ```bash
-anki_generator test_api [options]
+anki_generator test_api [--provider PROVIDER] [--api_key API_KEY] [--model MODEL]
 ```
 
 ## File Attachments
@@ -278,7 +286,7 @@ The tool automatically processes text-based files including:
 ./bin/anki_generator prompt_to_deck "Study this codebase" "Project Deck" project.apkg --attach ./src --attach ./lib
 
 # Combine with prompt files
-./bin/anki_generator generate_yaml study_prompt.txt output.yaml --prompt-file --attach ./examples --attach README.md
+./bin/anki_generator generate_yaml study_prompt.txt output.yaml --prompt_file --attach ./examples --attach README.md
 
 # Use context and attachments together
 ./bin/anki_generator prompt_to_deck "Advanced Ruby patterns" "Advanced Ruby" advanced.apkg \
@@ -338,23 +346,29 @@ cards:
 
 ### Environment Variables
 
-- `OPENROUTER_API_KEY`: Your OpenRouter API key
-- `OPENROUTER_DEFAULT_MODEL`: Default model to use (optional)
+- `GOOGLE_API_KEY` / `GEMINI_API_KEY`: Your Google Gemini API key (default provider)
+- `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`: keys for the other cloud providers
 - `OLLAMA_URL`: Ollama server URL (default `http://localhost:11434`)
+- `ANKI_GENERATOR_MODEL`: Default model to use (optional, or pass `--model`)
 
 ### Providers
 
-- **OpenRouter** (default, `--provider openrouter`): cloud models, needs an API key; requests retry automatically with backoff on 429/5xx
+AI generation is backed by the [ruby_llm](https://github.com/crmne/ruby_llm) gem, so any provider it supports works. Omit `--provider` to auto-resolve from the model name, or pin one explicitly:
+
+- **Gemini** (default model `gemini-3.8-flash`, no `--provider` needed): Google's models, key from `GOOGLE_API_KEY`/`GEMINI_API_KEY`
+- **OpenAI** (`--provider openai`): `OPENAI_API_KEY`
+- **Anthropic** (`--provider anthropic`): `ANTHROPIC_API_KEY`
+- **OpenRouter** (`--provider openrouter`): cloud aggregator, `OPENROUTER_API_KEY`
 - **Ollama** (`--provider ollama`): free, local, private — run any GGUF model on your machine with no API key
 
 ### Supported Models
 
-The tool supports all models available through OpenRouter:
+The tool supports all models available through the configured provider:
 
-- OpenAI: `openai/gpt-4o-mini` (default), `openai/gpt-4o`
-- Anthropic: `anthropic/claude-sonnet-4`, `anthropic/claude-haiku-4`
-- Meta: `meta-llama/llama-3.3-70b-instruct`
-- And many more...
+- Google: `gemini-3.8-flash` (default), `gemini-3.8-pro`
+- OpenAI: `gpt-5`, `gpt-4o`
+- Anthropic: `claude-sonnet-4`, `claude-haiku-4`
+- And many more (any model id the provider supports)
 
 ## Examples
 
@@ -396,12 +410,12 @@ The tool supports all models available through OpenRouter:
 
 # Use prompt file with attachments
 echo "Create flashcards focusing on the class structure and methods in the attached files" > study_prompt.txt
-./bin/anki_generator generate_yaml study_prompt.txt class_study.yaml --prompt-file --attach ./models
+./bin/anki_generator generate_yaml study_prompt.txt class_study.yaml --prompt_file --attach ./models
 
 # Advanced usage with multiple options
 ./bin/anki_generator prompt_to_deck prompt_file.txt "Advanced Study" advanced.apkg \
-  --prompt-file --attach ./src --attach ./docs --difficulty hard --count 25 \
-  --context "Focus on advanced patterns and best practices" --save-yaml
+  --prompt_file --attach ./src --attach ./docs --difficulty hard --count 25 \
+  --context "Focus on advanced patterns and best practices" --save_yaml
 ```
 
 ### Example YAML Files
@@ -451,8 +465,8 @@ The project includes GitHub Actions workflows:
 
 To trigger a release:
 ```bash
-git tag v1.2.0
-git push origin v1.2.0
+git tag v1.4.0
+git push origin v1.4.0
 ```
 
 ### Running Tests
@@ -501,14 +515,15 @@ rake release_prep             # Prepare for release
 │   ├── card.rb                # Card value object (basic + cloze, tags, reverse)
 │   ├── apkg_writer.rb         # Native .apkg (zip + SQLite) writer
 │   ├── apkg_schema.rb         # Anki collection schema and model JSON
+│   ├── apkg_exporter.rb       # .apkg export for the web UI download
 │   ├── cli.rb                 # Thor CLI (thin shell over Commands::*)
 │   ├── commands/              # One service object per CLI command
 │   ├── importers/             # Markdown and CSV note importers
-│   ├── openrouter_client.rb   # OpenRouter API client (retries, timeouts)
-│   ├── ollama_client.rb       # Local Ollama API client
-│   ├── client_factory.rb      # Provider selection
+│   ├── llm_client.rb          # Provider-agnostic LLM client (ruby_llm gem)
+│   ├── client_factory.rb      # Builds the LLM client (any ruby_llm provider)
+│   ├── card_schema.rb         # Schematist schemas for structured LLM output
 │   ├── anki_connect_client.rb # Push decks into a running Anki
-│   ├── server.rb              # WEBrick servlets for the web editor
+│   ├── server.rb              # Sinatra app for the web editor
 │   ├── prompt_builder.rb      # Prompt construction
 │   └── file_processor.rb      # File attachment processing
 ├── bin/
@@ -520,7 +535,7 @@ rake release_prep             # Prepare for release
 
 ## API Integration
 
-The tool integrates with OpenRouter to provide access to multiple AI models. You can:
+The tool integrates with the ruby_llm gem to provide access to multiple AI providers and models. You can:
 
 1. Generate flashcards on any topic
 2. Specify difficulty levels

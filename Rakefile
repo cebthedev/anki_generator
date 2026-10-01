@@ -89,7 +89,7 @@ end
 desc 'Demo: Generate cards from prompt'
 task :demo_prompt do
   puts 'Demo: Generating flashcards from a simple prompt...'
-  puts 'Note: This requires OPENROUTER_API_KEY environment variable'
+  puts 'Note: This requires a configured LLM API key (e.g. GOOGLE_API_KEY)'
 
   sh 'ruby -I lib bin/anki_generator generate_yaml "Ruby basics: variables, methods, classes" ' \
      'demo_output.yaml --count 5 --difficulty easy'
@@ -99,7 +99,7 @@ end
 desc 'Demo: Generate cards with file attachments'
 task demo_attachments: :examples do
   puts 'Demo: Generating flashcards with file attachments...'
-  puts 'Note: This requires OPENROUTER_API_KEY environment variable'
+  puts 'Note: This requires a configured LLM API key (e.g. GOOGLE_API_KEY)'
 
   sh 'ruby -I lib bin/anki_generator prompt_to_deck examples/study_prompt.txt "Ruby Study Demo" ' \
      'demo_deck.apkg --prompt-file --attach examples/example_class.rb --count 8'
@@ -108,7 +108,7 @@ end
 
 desc 'Demo: Test API connection'
 task :demo_api do
-  puts 'Testing OpenRouter API connection...'
+  puts 'Testing LLM connection...'
   sh 'ruby -I lib bin/anki_generator test_api'
 end
 

@@ -3,7 +3,7 @@
 require 'tempfile'
 require_relative 'prompt_based'
 require_relative '../deck_builder'
-require_relative '../openrouter_client'
+require_relative '../client_factory'
 require_relative '../ui'
 
 module AnkiGenerator
@@ -14,7 +14,7 @@ module AnkiGenerator
     class PromptToDeck
       include PromptBased
 
-      def initialize(prompt:, deck_name:, output_file:, model: OpenRouterClient::DEFAULT_MODEL,
+      def initialize(prompt:, deck_name:, output_file:, model: LlmClient::DEFAULT_MODEL,
                      difficulty: 'medium', count: 10, context: nil, save_yaml: false,
                      attach: nil, prompt_file: false, client: nil, ui: UI.new)
         @prompt = prompt
@@ -26,7 +26,7 @@ module AnkiGenerator
         @save_yaml = save_yaml
         @attach = attach
         @prompt_file = prompt_file
-        @client = client || OpenRouterClient.new(model:)
+        @client = client || ClientFactory.build(model:)
         @ui = ui
       end
 

@@ -1,13 +1,12 @@
 # frozen_string_literal: true
 
 require_relative '../file_processor'
-require_relative '../openrouter_client'
 require_relative '../ui'
 
 module AnkiGenerator
   module Commands
     # Shared behaviour for commands that turn a prompt (+ optional attachments)
-    # into flashcards via the OpenRouter API.
+    # into flashcards via the configured LLM provider.
     module PromptBased
       attr_reader :client, :ui
 
